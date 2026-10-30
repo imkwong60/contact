@@ -35,6 +35,18 @@
             -webkit-overflow-scrolling: touch;
         }
         
+        /* Safe area for notch / status bar on mobile (PWA & Safari) */
+        :root {
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        .safe-top {
+            padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+        }
+        body {
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        
         @media (max-width: 640px) {
             .contact-card { padding: 0.875rem !important; }
             .contact-card .avatar {
@@ -64,7 +76,7 @@
 <body class="bg-gradient-to-br from-slate-50 via-indigo-50/30 to-blue-50/50 min-h-screen text-slate-800 flex flex-col">
 
     <!-- Header / Navbar -->
-    <header class="bg-white/90 backdrop-blur-md sticky top-0 z-30 border-b border-slate-200 shadow-sm">
+    <header class="bg-white/90 backdrop-blur-md sticky top-0 z-30 border-b border-slate-200 shadow-sm safe-top">
         <div class="max-w-5xl mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5 min-w-0">
                 <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-200 flex-shrink-0">
@@ -564,23 +576,43 @@
                         return;
                     }
                     
-                    // Basic validation & normalize
-                    const normalized = list.map((c, i) => ({
-                        id: c.id || (Date.now().toString() + i),
-                        name: c.name || '未命名',
-                        phone: c.phone || '',
-                        phone1Prefix: c.phone1Prefix || '',
-                        phone2: c.phone2 || '',
-                        phone2Prefix: c.phone2Prefix || '',
-                        email: c.email || '',
-                        address: c.address || '',
-                        birthday: c.birthday || '',
-                        idCard: c.idCard || '',
-                        passport: c.passport || '',
-                        category: c.category || 'friend',
-                        relationship: c.relationship || '',
-                        note: c.note || ''
-                    })).filter(c => c.phone || c.name);
+                    // Map relation / tags → category
+                    function mapCategory(c) {
+                        if (c.category) return c.category;
+                        const rel = (c.relation || c.relationship || '').trim();
+                        if (['家人', '父親', '母親', '配偶', '子女', '兄弟', '姊妹', '親戚'].includes(rel) || rel.includes('家')) return 'family';
+                        if (['同事', '上司', '客戶', '工作'].includes(rel) || rel.includes('工作')) return 'work';
+                        if (['朋友', '同學'].includes(rel)) return 'friend';
+                        if (Array.isArray(c.tags) && c.tags.includes('vip')) return 'friend';
+                        return 'friend';
+                    }
+                    
+                    // Normalize both old backup format & current format
+                    const normalized = list.map((c, i) => {
+                        const phone1 = (c.phone1 || c.phone || '').toString().replace(/\s+/g, '');
+                        const phone2 = (c.phone2 || '').toString().replace(/\s+/g, '');
+                        const prefix1 = c.phoneCode1 || c.phone1Prefix || '';
+                        const prefix2 = c.phoneCode2 || c.phone2Prefix || '';
+                        const relationship = c.relationship || c.relation || '';
+                        const note = c.note || c.notes || '';
+                        
+                        return {
+                            id: c.id || (Date.now().toString() + '_' + i),
+                            name: (c.name || '未命名').trim(),
+                            phone: phone1,
+                            phone1Prefix: prefix1,
+                            phone2: phone2,
+                            phone2Prefix: prefix2,
+                            email: (c.email || '').trim(),
+                            address: (c.address || '').trim(),
+                            birthday: c.birthday || '',
+                            idCard: (c.idCard || '').trim(),
+                            passport: (c.passport || '').trim(),
+                            category: mapCategory(c),
+                            relationship: relationship,
+                            note: note
+                        };
+                    }).filter(c => c.phone || c.name);
                     
                     if (normalized.length === 0) {
                         showToast('沒有有效的聯絡人資料', 'info');
