@@ -1,7 +1,7 @@
 const CACHE_NAME = 'jlaw-contact-v1';
 const ASSETS = [
   './',
-  './contact.html',
+  './index.html',
   './manifest.json',
   './icon-192.svg',
   './icon-512.svg',
