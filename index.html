@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="J.Law Contact">
+    <meta name="description" content="J.Law 通訊錄 PWA - 支援手機通訊錄匯入、vCard / JSON 匯出與 Email 雲端同步">
+    <title>J.Law Contact</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.svg">
+    <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; overscroll-behavior: none; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+        
+        html, body {
+            overscroll-behavior-y: none;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        @media (max-width: 640px) {
+            .contact-card { padding: 0.875rem !important; }
+            .contact-card .avatar {
+                width: 2.5rem !important;
+                height: 2.5rem !important;
+                font-size: 0.875rem !important;
+            }
+        }
+        
+        body.modal-open {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+        }
+        
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .age-badge {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-indigo-50/30 to-blue-50/50 min-h-screen text-slate-800 flex flex-col">
+
+    <!-- Header / Navbar -->
+    <header class="bg-white/90 backdrop-blur-md sticky top-0 z-30 border-b border-slate-200 shadow-sm">
+        <div class="max-w-5xl mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-200 flex-shrink-0">
+                    <i class="fa-solid fa-address-book text-base sm:text-lg"></i>
+                </div>
+                <div class="min-w-0">
+                    <h1 class="font-bold text-base sm:text-lg text-slate-900 tracking-tight truncate">J.Law Contact</h1>
+                    <p class="text-[10px] sm:text-xs text-slate-500 truncate" id="syncStatus">本機儲存 · 可連結 Email 同步</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                <button onclick="openSyncModal()" id="syncBtn" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all" title="Email 同步">
+                    <i class="fa-solid fa-cloud text-sm"></i>
+                </button>
+                <button onclick="openModal()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+                    <i class="fa-solid fa-plus text-sm"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="max-w-5xl mx-auto px-3 sm:px-4 pb-2.5">
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="搜尋姓名、電話、信箱、地址..." 
+                    class="w-full pl-9 pr-4 py-2 bg-slate-100 border border-transparent focus:border-indigo-500 focus:bg-white rounded-xl text-sm transition-all outline-none">
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile secondary toolbar -->
+    <div class="sm:hidden bg-white border-b border-slate-200 px-2 py-1.5 flex items-center justify-between text-[11px] gap-1">
+        <button onclick="importPhoneContacts()" class="text-indigo-600 font-medium flex items-center gap-1 py-1 flex-1 justify-center">
+            <i class="fa-solid fa-mobile-screen"></i> 讀取手機
+        </button>
+        <span class="text-slate-200">|</span>
+        <button onclick="exportVCard()" class="text-slate-600 font-medium flex items-center gap-1 py-1 flex-1 justify-center">
+            <i class="fa-solid fa-file-export"></i> vCard
+        </button>
+        <span class="text-slate-200">|</span>
+        <button onclick="exportJSON()" class="text-slate-600 font-medium flex items-center gap-1 py-1 flex-1 justify-center">
+            <i class="fa-solid fa-file-code"></i> JSON
+        </button>
+        <span class="text-slate-200">|</span>
+        <button onclick="triggerImportJSON()" class="text-slate-600 font-medium flex items-center gap-1 py-1 flex-1 justify-center">
+            <i class="fa-solid fa-file-import"></i> 匯入
+        </button>
+    </div>
+
+    <!-- Desktop toolbar -->
+    <div class="hidden sm:flex max-w-5xl mx-auto px-4 pt-3 gap-2 flex-wrap">
+        <button onclick="importPhoneContacts()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-mobile-screen"></i> 讀取手機通訊錄
+        </button>
+        <button onclick="exportVCard()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-file-export"></i> 匯出 vCard
+        </button>
+        <button onclick="exportJSON()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-file-code"></i> 匯出 JSON
+        </button>
+        <button onclick="triggerImportJSON()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-file-import"></i> 匯入 JSON
+        </button>
+        <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden" onchange="importJSON(event)">
+    </div>
+
+    <!-- Main Container -->
+    <main class="max-w-5xl mx-auto px-3 sm:px-4 py-4 flex-1 w-full overflow-y-auto" style="max-height: calc(100dvh - 150px);">
+        <!-- Filter Tabs -->
+        <div class="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
+            <button onclick="filterCategory('all')" id="tab-all" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all whitespace-nowrap">全部</button>
+            <button onclick="filterCategory('family')" id="tab-family" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all whitespace-nowrap">家人</button>
+            <button onclick="filterCategory('work')" id="tab-work" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all whitespace-nowrap">工作</button>
+            <button onclick="filterCategory('friend')" id="tab-friend" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all whitespace-nowrap">朋友</button>
+            <button onclick="filterCategory('other')" id="tab-other" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all whitespace-nowrap">其他</button>
+        </div>
+
+        <div id="contactGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <!-- Dynamic Contact Cards -->
+        </div>
+
+        <div id="emptyState" class="hidden flex-col items-center justify-center py-12 text-center">
+            <div class="w-14 h-14 bg-slate-200 text-slate-400 rounded-full flex items-center justify-center text-xl mb-3">
+                <i class="fa-solid fa-address-book"></i>
+            </div>
+            <h3 class="text-sm font-semibold text-slate-700 mb-1">找不到聯絡人</h3>
+            <p class="text-xs text-slate-500 max-w-xs mb-3">手動新增、匯入手機通訊錄，或用 Email 從雲端載入。</p>
+            <button onclick="openModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-medium shadow-md">立即新增</button>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-2.5 text-center text-[10px] text-slate-400">
+        J.Law Contact PWA &copy; 2026 · Contact Picker · vCard / JSON · Email 雲端同步
+    </footer>
+
+    <!-- Add/Edit Modal -->
+    <div id="contactModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-md max-h-[92dvh] overflow-hidden flex flex-col">
+            <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                <h3 id="modalTitle" class="font-bold text-slate-800 text-sm">新增聯絡人</h3>
+                <button onclick="closeModal()" class="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="contactForm" onsubmit="saveContact(event)" class="p-4 space-y-3 overflow-y-auto flex-1">
+                <input type="hidden" id="contactId">
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">姓名 *</label>
+                    <input type="text" id="name" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="例如：王小明">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">關係</label>
+                        <select id="relationship" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                            <option value="">請選擇</option>
+                            <option value="父親">父親</option>
+                            <option value="母親">母親</option>
+                            <option value="配偶">配偶</option>
+                            <option value="子女">子女</option>
+                            <option value="兄弟">兄弟</option>
+                            <option value="姊妹">姊妹</option>
+                            <option value="親戚">親戚</option>
+                            <option value="同事">同事</option>
+                            <option value="上司">上司</option>
+                            <option value="客戶">客戶</option>
+                            <option value="同學">同學</option>
+                            <option value="朋友">朋友</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">分類標籤</label>
+                        <select id="category" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                            <option value="friend">朋友</option>
+                            <option value="work">工作</option>
+                            <option value="family">家人</option>
+                            <option value="other">其他</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">電話 1 *</label>
+                    <div class="flex gap-2">
+                        <select id="phone1Prefix" class="w-24 px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 outline-none flex-shrink-0">
+                            <option value="">不加</option>
+                            <option value="+852">+852</option>
+                            <option value="+886">+886</option>
+                            <option value="+86">+86</option>
+                            <option value="+1">+1</option>
+                            <option value="+81">+81</option>
+                            <option value="+65">+65</option>
+                        </select>
+                        <input type="tel" id="phone" required class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="電話號碼">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">電話 2</label>
+                    <div class="flex gap-2">
+                        <select id="phone2Prefix" class="w-24 px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 outline-none flex-shrink-0">
+                            <option value="">不加</option>
+                            <option value="+852">+852</option>
+                            <option value="+886">+886</option>
+                            <option value="+86">+86</option>
+                            <option value="+1">+1</option>
+                            <option value="+81">+81</option>
+                            <option value="+65">+65</option>
+                        </select>
+                        <input type="tel" id="phone2" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="電話號碼（選填）">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <input type="email" id="email" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="example@email.com">
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">地址</label>
+                    <input type="text" id="address" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="居住或工作地址">
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">出生日期</label>
+                    <div class="flex gap-2">
+                        <input type="date" id="birthday" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                        <button type="button" onclick="calcAge()" class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-semibold whitespace-nowrap border border-indigo-100">
+                            計算年紀
+                        </button>
+                    </div>
+                    <p id="ageDisplay" class="text-xs text-indigo-600 mt-1 hidden"></p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">身份證</label>
+                        <input type="text" id="idCard" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="身份證號碼">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">護照</label>
+                        <input type="text" id="passport" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="護照號碼">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Line / 備註</label>
+                    <input type="text" id="note" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none" placeholder="Line ID 或其他備註">
+                </div>
+                
+                <div class="pt-2 flex items-center justify-end gap-2 sticky bottom-0 bg-white pb-1">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold">取消</button>
+                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-200">儲存聯絡人</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Sync Modal (Email as ID, no registration) -->
+    <div id="syncModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="font-bold text-slate-800 text-sm">Email 雲端同步</h3>
+                <button onclick="closeSyncModal()" class="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-3">
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    不需註冊帳號。輸入 Email 作為連結 ID，即可把本機聯絡人上傳或從雲端下載。<br>
+                    資料會存在 Supabase <code class="bg-slate-100 px-1 rounded">notepad_data</code>，id 格式為 <code class="bg-slate-100 px-1 rounded">jlaw_contacts_你的email</code>。
+                </p>
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Email（作為同步 ID）</label>
+                    <input type="email" id="syncEmail" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 outline-none" placeholder="your@email.com">
+                </div>
+                
+                <div class="flex gap-2">
+                    <button onclick="loadFromCloud()" class="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> 從雲端載入
+                    </button>
+                    <button onclick="saveToCloud()" class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> 上傳到雲端
+                    </button>
+                </div>
+                
+                <div id="linkedEmailInfo" class="hidden bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-700">
+                    <i class="fa-solid fa-link mr-1"></i> 目前連結：<span id="linkedEmailDisplay"></span>
+                    <button onclick="clearLinkedEmail()" class="ml-2 text-emerald-800 underline">解除</button>
+                </div>
+                
+                <p class="text-[10px] text-slate-400 text-center">任何人知道此 Email 即可讀寫該筆資料（請自行保管）</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 transform translate-y-16 opacity-0 transition-all duration-300 pointer-events-none">
+        <div id="toastContent" class="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-xl text-xs font-medium flex items-center gap-2 max-w-xs">
+            <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>
+            <span id="toastMessage">操作成功</span>
+        </div>
+    </div>
+
+    <script>
+        // ========== Supabase (anon key, no auth required) ==========
+        const SUPABASE_URL = 'https://wanknivxcsrasdkkxmfr.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhbmtuaXZ4Y3NyYXNka2t4bWZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMzE4NjcsImV4cCI6MjEwMjkwNzg2N30.tqsFimERtYCxoh8J-8FlqxByWtX2gNnyaGo08jditrs';
+        
+        const { createClient } = supabase;
+        const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let contacts = [];
+        let currentFilter = 'all';
+        let searchQuery = '';
+        let linkedEmail = localStorage.getItem('jlaw_linked_email') || '';
+
+        const defaultContacts = [
+            { id: '1', name: '陳經理', phone: '0912345678', phone1Prefix: '', phone2: '', phone2Prefix: '', email: 'manager@company.com', category: 'work', relationship: '上司', address: '', birthday: '', idCard: '', passport: '', note: '業務主管' },
+            { id: '2', name: '林美玲', phone: '0987654321', phone1Prefix: '', phone2: '', phone2Prefix: '', email: 'meiling@gmail.com', category: 'family', relationship: '姊妹', address: '', birthday: '', idCard: '', passport: '', note: '姐姐' },
+            { id: '3', name: '張志明', phone: '0933112233', phone1Prefix: '', phone2: '', phone2Prefix: '', email: 'jimmy_zheng@outlook.com', category: 'friend', relationship: '同學', address: '', birthday: '', idCard: '', passport: '', note: '大學同學' }
+        ];
+
+        // ========== Init ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            // Register Service Worker for PWA
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js').then(() => {
+                    console.log('SW registered');
+                }).catch(err => console.warn('SW fail', err));
+            }
+
+            // Load local
+            const local = localStorage.getItem('jlaw_contacts_v2');
+            if (local) {
+                try { contacts = JSON.parse(local); } catch(e) { contacts = defaultContacts; }
+            } else {
+                contacts = defaultContacts;
+                persistLocal();
+            }
+            
+            updateSyncUI();
+            renderContacts();
+            
+            // Handle ?action=add
+            if (new URLSearchParams(location.search).get('action') === 'add') {
+                setTimeout(() => openModal(), 300);
+            }
+        });
+
+        // ========== Local Persistence ==========
+        function persistLocal() {
+            localStorage.setItem('jlaw_contacts_v2', JSON.stringify(contacts));
+        }
+
+        // ========== Email as ID Sync ==========
+        function getRowId(email) {
+            return `jlaw_contacts_${email.trim().toLowerCase()}`;
+        }
+
+        function openSyncModal() {
+            document.getElementById('syncModal').classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            document.getElementById('syncEmail').value = linkedEmail || '';
+            updateSyncUI();
+        }
+        function closeSyncModal() {
+            document.getElementById('syncModal').classList.add('hidden');
+            document.body.classList.remove('modal-open');
+        }
+
+        function updateSyncUI() {
+            const info = document.getElementById('linkedEmailInfo');
+            const status = document.getElementById('syncStatus');
+            const btn = document.getElementById('syncBtn');
+            
+            if (linkedEmail) {
+                info.classList.remove('hidden');
+                document.getElementById('linkedEmailDisplay').textContent = linkedEmail;
+                status.textContent = '已連結 · ' + linkedEmail;
+                btn.innerHTML = '<i class="fa-solid fa-cloud-check text-sm text-emerald-600"></i>';
+                btn.classList.add('bg-emerald-50');
+            } else {
+                info.classList.add('hidden');
+                status.textContent = '本機儲存 · 可連結 Email 同步';
+                btn.innerHTML = '<i class="fa-solid fa-cloud text-sm"></i>';
+                btn.classList.remove('bg-emerald-50');
+            }
+        }
+
+        function clearLinkedEmail() {
+            linkedEmail = '';
+            localStorage.removeItem('jlaw_linked_email');
+            updateSyncUI();
+            showToast('已解除 Email 連結', 'info');
+        }
+
+        async function loadFromCloud() {
+            const email = (document.getElementById('syncEmail').value || linkedEmail || '').trim().toLowerCase();
+            if (!email || !email.includes('@')) {
+                showToast('請輸入有效的 Email', 'info');
+                return;
+            }
+            
+            try {
+                const rowId = getRowId(email);
+                const { data, error } = await sb
+                    .from('notepad_data')
+                    .select('data')
+                    .eq('id', rowId)
+                    .maybeSingle();
+                
+                if (error) {
+                    showToast('讀取失敗：' + (error.message || '網路或權限問題'), 'info');
+                    console.error(error);
+                    return;
+                }
+                
+                if (!data || !data.data) {
+                    showToast('雲端尚無此 Email 的資料，請先上傳', 'info');
+                    return;
+                }
+                
+                const cloudData = data.data;
+                if (cloudData.contacts && Array.isArray(cloudData.contacts)) {
+                    contacts = cloudData.contacts;
+                    persistLocal();
+                    linkedEmail = email;
+                    localStorage.setItem('jlaw_linked_email', email);
+                    updateSyncUI();
+                    renderContacts();
+                    showToast(`已從雲端載入 ${contacts.length} 位聯絡人`, 'success');
+                    closeSyncModal();
+                } else {
+                    showToast('雲端資料格式不正確', 'info');
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('載入發生錯誤', 'info');
+            }
+        }
+
+        async function saveToCloud() {
+            const email = (document.getElementById('syncEmail').value || linkedEmail || '').trim().toLowerCase();
+            if (!email || !email.includes('@')) {
+                showToast('請輸入有效的 Email', 'info');
+                return;
+            }
+            
+            if (contacts.length === 0) {
+                showToast('目前沒有聯絡人可上傳', 'info');
+                return;
+            }
+            
+            try {
+                const rowId = getRowId(email);
+                const payload = {
+                    id: rowId,
+                    data: {
+                        app: 'jlaw-contact',
+                        email: email,
+                        contacts: contacts,
+                        updated: new Date().toISOString()
+                    },
+                    updated_at: new Date().toISOString()
+                };
+                
+                const { error } = await sb
+                    .from('notepad_data')
+                    .upsert(payload, { onConflict: 'id' });
+                
+                if (error) {
+                    showToast('上傳失敗：' + (error.message || '權限或網路問題'), 'info');
+                    console.error(error);
+                    return;
+                }
+                
+                linkedEmail = email;
+                localStorage.setItem('jlaw_linked_email', email);
+                updateSyncUI();
+                showToast(`已上傳 ${contacts.length} 位聯絡人到雲端`, 'success');
+                closeSyncModal();
+            } catch (e) {
+                console.error(e);
+                showToast('上傳發生錯誤', 'info');
+            }
+        }
+
+        // ========== JSON Export / Import ==========
+        function exportJSON() {
+            if (contacts.length === 0) {
+                showToast('沒有可匯出的聯絡人', 'info');
+                return;
+            }
+            const payload = {
+                app: 'jlaw-contact',
+                exportedAt: new Date().toISOString(),
+                count: contacts.length,
+                contacts: contacts
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `jlaw_contacts_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('已下載 JSON 備份檔', 'success');
+        }
+
+        function triggerImportJSON() {
+            document.getElementById('jsonFileInput').click();
+        }
+
+        function importJSON(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    let list = null;
+                    if (Array.isArray(data)) {
+                        list = data;
+                    } else if (data.contacts && Array.isArray(data.contacts)) {
+                        list = data.contacts;
+                    } else {
+                        showToast('JSON 格式不正確（需有 contacts 陣列）', 'info');
+                        return;
+                    }
+                    
+                    // Basic validation & normalize
+                    const normalized = list.map((c, i) => ({
+                        id: c.id || (Date.now().toString() + i),
+                        name: c.name || '未命名',
+                        phone: c.phone || '',
+                        phone1Prefix: c.phone1Prefix || '',
+                        phone2: c.phone2 || '',
+                        phone2Prefix: c.phone2Prefix || '',
+                        email: c.email || '',
+                        address: c.address || '',
+                        birthday: c.birthday || '',
+                        idCard: c.idCard || '',
+                        passport: c.passport || '',
+                        category: c.category || 'friend',
+                        relationship: c.relationship || '',
+                        note: c.note || ''
+                    })).filter(c => c.phone || c.name);
+                    
+                    if (normalized.length === 0) {
+                        showToast('沒有有效的聯絡人資料', 'info');
+                        return;
+                    }
+                    
+                    if (confirm(`即將匯入 ${normalized.length} 位聯絡人，會取代目前本機資料，確定嗎？`)) {
+                        contacts = normalized;
+                        persistLocal();
+                        renderContacts();
+                        showToast(`成功匯入 ${normalized.length} 位聯絡人`, 'success');
+                    }
+                } catch (err) {
+                    showToast('解析 JSON 失敗', 'info');
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // reset
+        }
+
+        // ========== Age Calculator ==========
+        function calcAge() {
+            const bday = document.getElementById('birthday').value;
+            const display = document.getElementById('ageDisplay');
+            if (!bday) {
+                display.classList.add('hidden');
+                return;
+            }
+            const birth = new Date(bday);
+            const today = new Date();
+            let age = today.getFullYear() - birth.getFullYear();
+            const m = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+            
+            display.textContent = `目前年紀：${age} 歲`;
+            display.classList.remove('hidden');
+        }
+
+        function calcAgeFromDate(bday) {
+            if (!bday) return null;
+            const birth = new Date(bday);
+            const today = new Date();
+            let age = today.getFullYear() - birth.getFullYear();
+            const m = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+            return age;
+        }
+
+        // ========== Render ==========
+        function renderContacts() {
+            const grid = document.getElementById('contactGrid');
+            const emptyState = document.getElementById('emptyState');
+
+            let filtered = contacts.filter(c => {
+                const matchesCategory = currentFilter === 'all' || c.category === currentFilter;
+                const q = searchQuery.toLowerCase();
+                const matchesSearch = !q || 
+                    (c.name && c.name.toLowerCase().includes(q)) ||
+                    (c.phone && c.phone.includes(q)) ||
+                    (c.phone2 && c.phone2.includes(q)) ||
+                    (c.email && c.email.toLowerCase().includes(q)) ||
+                    (c.address && c.address.toLowerCase().includes(q)) ||
+                    (c.note && c.note.toLowerCase().includes(q)) ||
+                    (c.relationship && c.relationship.includes(q));
+                return matchesCategory && matchesSearch;
+            });
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+                return;
+            }
+
+            emptyState.classList.remove('flex');
+            emptyState.classList.add('hidden');
+
+            const categoryLabels = { friend: '朋友', work: '工作', family: '家人', other: '其他' };
+            const categoryColors = { 
+                friend: 'bg-emerald-50 text-emerald-600 border-emerald-200', 
+                work: 'bg-indigo-50 text-indigo-600 border-indigo-200', 
+                family: 'bg-amber-50 text-amber-600 border-amber-200',
+                other: 'bg-slate-50 text-slate-600 border-slate-200'
+            };
+
+            grid.innerHTML = filtered.map(c => {
+                const fullPhone = (c.phone1Prefix || '') + (c.phone || '');
+                const fullPhone2 = (c.phone2Prefix || '') + (c.phone2 || '');
+                const age = c.birthday ? calcAgeFromDate(c.birthday) : null;
+                
+                return `
+                <div class="contact-card bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group fade-in">
+                    <div>
+                        <div class="flex items-start justify-between gap-2 mb-2.5">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <div class="avatar w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-500 to-blue-600 text-white font-bold flex items-center justify-center text-base shadow-md shadow-indigo-100 flex-shrink-0">
+                                    ${escapeHtml(c.name ? c.name.charAt(0) : '?')}
+                                </div>
+                                <div class="min-w-0">
+                                    <h4 class="font-bold text-slate-800 text-sm tracking-tight truncate">${escapeHtml(c.name)}</h4>
+                                    <div class="flex items-center gap-1 flex-wrap mt-0.5">
+                                        <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold border ${categoryColors[c.category] || categoryColors.other}">
+                                            ${categoryLabels[c.category] || '未分類'}
+                                        </span>
+                                        ${c.relationship ? `<span class="text-[10px] text-slate-500">${escapeHtml(c.relationship)}</span>` : ''}
+                                        ${age !== null ? `<span class="age-badge text-white text-[10px] px-1.5 py-0.5 rounded font-medium">${age}歲</span>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                                <button onclick="editContact('${c.id}')" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 flex items-center justify-center">
+                                    <i class="fa-solid fa-pen text-[10px]"></i>
+                                </button>
+                                <button onclick="deleteContact('${c.id}')" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-rose-600 flex items-center justify-center">
+                                    <i class="fa-solid fa-trash-can text-[10px]"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1 mb-3 text-xs text-slate-600">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-phone text-slate-400 w-3.5 text-center text-[10px]"></i>
+                                <span class="font-medium text-slate-700">${escapeHtml(fullPhone || c.phone)}</span>
+                            </div>
+                            ${fullPhone2 ? `
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-phone text-slate-400 w-3.5 text-center text-[10px]"></i>
+                                <span class="text-slate-600">${escapeHtml(fullPhone2)}</span>
+                            </div>` : ''}
+                            ${c.email ? `
+                            <div class="flex items-center gap-2 truncate">
+                                <i class="fa-solid fa-envelope text-slate-400 w-3.5 text-center text-[10px]"></i>
+                                <span class="truncate">${escapeHtml(c.email)}</span>
+                            </div>` : ''}
+                            ${c.address ? `
+                            <div class="flex items-center gap-2 truncate">
+                                <i class="fa-solid fa-location-dot text-slate-400 w-3.5 text-center text-[10px]"></i>
+                                <span class="truncate text-slate-500">${escapeHtml(c.address)}</span>
+                            </div>` : ''}
+                            ${c.note ? `
+                            <div class="flex items-center gap-2 truncate">
+                                <i class="fa-solid fa-note-sticky text-slate-400 w-3.5 text-center text-[10px]"></i>
+                                <span class="text-slate-500 truncate">${escapeHtml(c.note)}</span>
+                            </div>` : ''}
+                        </div>
+                    </div>
+
+                    <div class="pt-2.5 border-t border-slate-100 grid grid-cols-4 gap-1">
+                        <a href="tel:${fullPhone || c.phone}" class="py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-phone-volume text-[11px]"></i>
+                        </a>
+                        <a href="sms:${fullPhone || c.phone}" class="py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-comment-sms text-[11px]"></i>
+                        </a>
+                        <a href="https://wa.me/${(fullPhone || c.phone || '').replace(/[^0-9+]/g, '')}" target="_blank" class="py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center">
+                            <i class="fa-brands fa-whatsapp text-sm"></i>
+                        </a>
+                        ${c.email ? `
+                        <a href="mailto:${c.email}" class="py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-envelope text-[11px]"></i>
+                        </a>` : `
+                        <a href="https://line.me/R/msg/text/?${encodeURIComponent('Hello ' + (c.name || ''))}" target="_blank" class="py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-600 rounded-lg flex items-center justify-center">
+                            <i class="fa-brands fa-line text-[11px]"></i>
+                        </a>`}
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // ========== Filter & Search ==========
+        function filterCategory(cat) {
+            currentFilter = cat;
+            ['all', 'family', 'work', 'friend', 'other'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                if (!btn) return;
+                if (t === cat) {
+                    btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all whitespace-nowrap";
+                } else {
+                    btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all whitespace-nowrap";
+                }
+            });
+            renderContacts();
+        }
+
+        function handleSearch(val) {
+            searchQuery = val.trim();
+            renderContacts();
+        }
+
+        // ========== Modal ==========
+        function openModal(id = null) {
+            const modal = document.getElementById('contactModal');
+            const form = document.getElementById('contactForm');
+            const title = document.getElementById('modalTitle');
+            form.reset();
+            document.getElementById('contactId').value = '';
+            document.getElementById('ageDisplay').classList.add('hidden');
+
+            if (id) {
+                title.textContent = '編輯聯絡人';
+                const contact = contacts.find(c => c.id === id);
+                if (contact) {
+                    document.getElementById('contactId').value = contact.id;
+                    document.getElementById('name').value = contact.name || '';
+                    document.getElementById('phone').value = contact.phone || '';
+                    document.getElementById('phone1Prefix').value = contact.phone1Prefix || '';
+                    document.getElementById('phone2').value = contact.phone2 || '';
+                    document.getElementById('phone2Prefix').value = contact.phone2Prefix || '';
+                    document.getElementById('email').value = contact.email || '';
+                    document.getElementById('address').value = contact.address || '';
+                    document.getElementById('birthday').value = contact.birthday || '';
+                    document.getElementById('idCard').value = contact.idCard || '';
+                    document.getElementById('passport').value = contact.passport || '';
+                    document.getElementById('category').value = contact.category || 'friend';
+                    document.getElementById('relationship').value = contact.relationship || '';
+                    document.getElementById('note').value = contact.note || '';
+                    if (contact.birthday) calcAge();
+                }
+            } else {
+                title.textContent = '新增聯絡人';
+            }
+            modal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+        }
+
+        function closeModal() {
+            document.getElementById('contactModal').classList.add('hidden');
+            document.body.classList.remove('modal-open');
+        }
+
+        // ========== CRUD ==========
+        function saveContact(e) {
+            e.preventDefault();
+            const id = document.getElementById('contactId').value;
+            const name = document.getElementById('name').value.trim();
+            const phone = document.getElementById('phone').value.trim();
+            const phone1Prefix = document.getElementById('phone1Prefix').value;
+            const phone2 = document.getElementById('phone2').value.trim();
+            const phone2Prefix = document.getElementById('phone2Prefix').value;
+            const email = document.getElementById('email').value.trim();
+            const address = document.getElementById('address').value.trim();
+            const birthday = document.getElementById('birthday').value;
+            const idCard = document.getElementById('idCard').value.trim();
+            const passport = document.getElementById('passport').value.trim();
+            const category = document.getElementById('category').value;
+            const relationship = document.getElementById('relationship').value;
+            const note = document.getElementById('note').value.trim();
+
+            const payload = {
+                name, phone, phone1Prefix, phone2, phone2Prefix,
+                email, address, birthday, idCard, passport,
+                category, relationship, note
+            };
+
+            if (id) {
+                contacts = contacts.map(c => c.id === id ? { ...c, ...payload } : c);
+                showToast('已更新聯絡人', 'success');
+            } else {
+                contacts.unshift({
+                    id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                    ...payload
+                });
+                showToast('已新增聯絡人', 'success');
+            }
+
+            persistLocal();
+            closeModal();
+            renderContacts();
+        }
+
+        function editContact(id) {
+            openModal(id);
+        }
+
+        function deleteContact(id) {
+            if (confirm('確定要刪除這位聯絡人嗎？')) {
+                contacts = contacts.filter(c => c.id !== id);
+                persistLocal();
+                renderContacts();
+                showToast('已刪除聯絡人', 'info');
+            }
+        }
+
+        // ========== Contact Picker ==========
+        async function importPhoneContacts() {
+            if ('contacts' in navigator && 'select' in navigator.contacts) {
+                try {
+                    const props = ['name', 'tel', 'email'];
+                    const selectedContacts = await navigator.contacts.select(props, { multiple: true });
+                    
+                    if (selectedContacts && selectedContacts.length > 0) {
+                        let importedCount = 0;
+                        selectedContacts.forEach(sc => {
+                            const name = sc.name ? sc.name[0] : '未命名';
+                            const phone = sc.tel ? sc.tel[0] : '';
+                            const email = sc.email ? sc.email[0] : '';
+                            if (phone) {
+                                contacts.unshift({
+                                    id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                                    name, phone, phone1Prefix: '', phone2: '', phone2Prefix: '',
+                                    email, address: '', birthday: '', idCard: '', passport: '',
+                                    category: 'friend', relationship: '', note: '自手機通訊錄匯入'
+                                });
+                                importedCount++;
+                            }
+                        });
+                        persistLocal();
+                        renderContacts();
+                        showToast(`成功匯入 ${importedCount} 位聯絡人`, 'success');
+                    }
+                } catch (ex) {
+                    showToast('已取消或瀏覽器不支援', 'info');
+                }
+            } else {
+                showToast('您的瀏覽器不支援 Contact Picker API', 'info');
+            }
+        }
+
+        // ========== vCard Export ==========
+        function exportVCard() {
+            if (contacts.length === 0) {
+                showToast('沒有可匯出的聯絡人', 'info');
+                return;
+            }
+
+            let vcfData = '';
+            contacts.forEach(c => {
+                const fullPhone = (c.phone1Prefix || '') + (c.phone || '');
+                const fullPhone2 = (c.phone2Prefix || '') + (c.phone2 || '');
+                vcfData += 'BEGIN:VCARD\nVERSION:3.0\n';
+                vcfData += `FN:${c.name}\n`;
+                if (fullPhone) vcfData += `TEL;TYPE=CELL:${fullPhone}\n`;
+                if (fullPhone2) vcfData += `TEL;TYPE=HOME:${fullPhone2}\n`;
+                if (c.email) vcfData += `EMAIL:${c.email}\n`;
+                if (c.address) vcfData += `ADR;TYPE=HOME:;;${c.address};;;;\n`;
+                if (c.birthday) vcfData += `BDAY:${c.birthday}\n`;
+                if (c.note || c.relationship) vcfData += `NOTE:${[c.relationship, c.note].filter(Boolean).join(' / ')}\n`;
+                if (c.idCard) vcfData += `X-IDCARD:${c.idCard}\n`;
+                if (c.passport) vcfData += `X-PASSPORT:${c.passport}\n`;
+                vcfData += 'END:VCARD\n';
+            });
+
+            const blob = new Blob([vcfData], { type: 'text/vcard;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `jlaw_contacts_${new Date().toISOString().slice(0, 10)}.vcf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('已下載 .vcf 備份檔', 'success');
+        }
+
+        // ========== Toast ==========
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMessage.textContent = message;
+            toastIcon.className = type === 'success' 
+                ? 'fa-solid fa-circle-check text-emerald-400 text-sm'
+                : 'fa-solid fa-circle-info text-sky-400 text-sm';
+
+            toast.classList.remove('translate-y-16', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-16', 'opacity-0');
+            }, 2800);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // Prevent overscroll when modal open
+        document.addEventListener('touchmove', function(e) {
+            if (document.body.classList.contains('modal-open')) {
+                const target = e.target.closest('#contactForm, #syncModal');
+                if (!target) e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>

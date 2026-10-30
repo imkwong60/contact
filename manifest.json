@@ -1,0 +1,35 @@
+{
+  "name": "J.Law Contact",
+  "short_name": "J.Law",
+  "description": "J.Law 通訊錄 PWA - 支援手機通訊錄匯入、vCard / JSON 匯出與 Email 雲端同步",
+  "start_url": "./contact.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "lang": "zh-TW",
+  "icons": [
+    {
+      "src": "icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "新增聯絡人",
+      "short_name": "新增",
+      "url": "./contact.html?action=add",
+      "description": "快速新增聯絡人"
+    }
+  ]
+}
