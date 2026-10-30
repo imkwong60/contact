@@ -28,7 +28,7 @@
     {
       "name": "新增聯絡人",
       "short_name": "新增",
-      "url": "./contact.html?action=add",
+      "url": "./index.html?action=add",
       "description": "快速新增聯絡人"
     }
   ]
