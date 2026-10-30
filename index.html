@@ -74,7 +74,6 @@
         /* Do NOT use position:fixed on body — it breaks iOS keyboard */
         body.modal-open {
             overflow: hidden;
-            touch-action: none;
         }
         
         .fade-in { animation: fadeIn 0.2s ease-out; }
@@ -160,7 +159,7 @@
     </div>
 
     <!-- Main Container -->
-    <main class="max-w-5xl mx-auto px-3 sm:px-4 py-4 flex-1 w-full overflow-y-auto" style="max-height: calc(100dvh - 150px);">
+    <main class="max-w-5xl mx-auto px-3 sm:px-4 py-4 flex-1 w-full overflow-y-auto min-h-0">
         <!-- Filter Tabs -->
         <div class="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
             <button onclick="filterCategory('all')" id="tab-all" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all whitespace-nowrap">全部</button>
@@ -1008,24 +1007,24 @@
             return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
-        // Soft lock background scroll when modal is open (don't block input focus / keyboard)
-        document.addEventListener('touchmove', function(e) {
-            if (!document.body.classList.contains('modal-open')) return;
-            // Always allow scrolling inside form / modal content
-            if (e.target.closest('#contactForm, #syncModal, input, select, textarea, button, a')) return;
-            // Only block background page scroll
-            e.preventDefault();
-        }, { passive: false });
+        // iOS Standalone/PWA: avoid blocking the touch gesture chain used by inputs.
+        // The modal itself owns its scrolling; do not globally prevent touchmove.
 
-        // iOS: when keyboard opens, scroll focused field into view
+        // iOS: gently ensure the focused field is visible without smooth-scroll
+        // during the keyboard animation in standalone mode.
         document.addEventListener('focusin', function(e) {
             const el = e.target;
             if (!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+            const isStandalone = window.navigator.standalone === true ||
+                window.matchMedia('(display-mode: standalone)').matches;
             setTimeout(() => {
                 try {
-                    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    el.scrollIntoView({
+                        block: 'center',
+                        behavior: isStandalone ? 'auto' : 'smooth'
+                    });
                 } catch (_) {}
-            }, 300);
+            }, isStandalone ? 50 : 300);
         });
     </script>
 </body>
