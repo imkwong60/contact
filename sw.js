@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jlaw-contact-v2';
+const CACHE_NAME = 'jlaw-contact-v3';
 const ASSETS = [
   './',
   './index.html',
