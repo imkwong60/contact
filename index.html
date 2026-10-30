@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#4f46e5">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -47,6 +47,21 @@
             padding-bottom: env(safe-area-inset-bottom, 0px);
         }
         
+        /*
+         * iOS Safari: inputs with font-size < 16px trigger auto-zoom
+         * and often fail to open the keyboard (especially with user-scalable=no).
+         * Force 16px on all form controls.
+         */
+        input, select, textarea {
+            font-size: 16px !important;
+            -webkit-appearance: none;
+            appearance: none;
+            border-radius: 0.75rem;
+        }
+        input[type="date"] {
+            min-height: 2.5rem;
+        }
+        
         @media (max-width: 640px) {
             .contact-card { padding: 0.875rem !important; }
             .contact-card .avatar {
@@ -56,10 +71,10 @@
             }
         }
         
+        /* Do NOT use position:fixed on body — it breaks iOS keyboard */
         body.modal-open {
             overflow: hidden;
-            position: fixed;
-            width: 100%;
+            touch-action: none;
         }
         
         .fade-in { animation: fadeIn 0.2s ease-out; }
@@ -993,13 +1008,25 @@
             return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
-        // Prevent overscroll when modal open
+        // Soft lock background scroll when modal is open (don't block input focus / keyboard)
         document.addEventListener('touchmove', function(e) {
-            if (document.body.classList.contains('modal-open')) {
-                const target = e.target.closest('#contactForm, #syncModal');
-                if (!target) e.preventDefault();
-            }
+            if (!document.body.classList.contains('modal-open')) return;
+            // Always allow scrolling inside form / modal content
+            if (e.target.closest('#contactForm, #syncModal, input, select, textarea, button, a')) return;
+            // Only block background page scroll
+            e.preventDefault();
         }, { passive: false });
+
+        // iOS: when keyboard opens, scroll focused field into view
+        document.addEventListener('focusin', function(e) {
+            const el = e.target;
+            if (!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+            setTimeout(() => {
+                try {
+                    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                } catch (_) {}
+            }, 300);
+        });
     </script>
 </body>
 </html>
