@@ -2,7 +2,7 @@
   "name": "J.Law Contact",
   "short_name": "J.Law",
   "description": "J.Law 通訊錄 PWA - 支援手機通訊錄匯入、vCard / JSON 匯出與 Email 雲端同步",
-  "start_url": "./contact.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
